@@ -1,5 +1,5 @@
 //
-// PRXY 0.1 20150327 (friday) copyright sk4zuzu@gmail.com 2015
+// PRXY 0.2 20160415 (friday) copyright sk4zuzu@gmail.com 2016
 //
 // This file is part of PRXY.
 //
@@ -28,13 +28,13 @@
 #include <arpa/inet.h>
 
 
-#define _fail_if(__cond__,__code__)       \
-    if (__cond__) {                       \
-        printf("%s():%s:%s\n", __func__,  \
-                              #__cond__,  \
-                 (char*)strerror(errno)); \
-        __code__                          \
-        exit(errno);                      \
+#define _fail_if(__cond__,__code__,__verb__)            \
+    if (__cond__) {                                     \
+        if (__verb__) printf("%s():%s:%s\n", __func__,  \
+                                            #__cond__,  \
+                               (char*)strerror(errno)); \
+        __code__                                        \
+        exit(errno);                                    \
     }
 
 typedef struct {
@@ -42,6 +42,7 @@ typedef struct {
     char *ipv4;
     int   dport;
     char *dipv4;
+    int   verb;
 } cfg_t;
 
 typedef void (*fun_t) (int acpt, cfg_t *cfg);
@@ -51,7 +52,7 @@ static /*conn*/ int _connect(int acpt, cfg_t *cfg) {
     int rslt;
 
     int conn = socket(AF_INET, SOCK_STREAM, 0);
-    _fail_if(conn < 0, close(acpt); );
+    _fail_if(conn < 0, close(acpt);, cfg->verb);
 
     struct sockaddr_in addr = {
         .sin_family      = AF_INET,
@@ -61,13 +62,13 @@ static /*conn*/ int _connect(int acpt, cfg_t *cfg) {
 
     rslt = connect(conn, (struct sockaddr *)&addr, sizeof(addr));
     _fail_if(rslt < 0, close(conn);
-                       close(acpt); );
+                       close(acpt);, cfg->verb);
 
     return conn;
 }
 
 
-static void _proxy(int acpt, int conn) {
+static void _proxy(int acpt, int conn, cfg_t *cfg) {
     struct pollfd fds[2] = {
         { .fd      = acpt,
           .events  = POLLIN,
@@ -81,49 +82,49 @@ static void _proxy(int acpt, int conn) {
         int rslt = poll(fds, 2, -1);
 
         _fail_if(rslt < 0, close(acpt);
-                           close(conn); );
+                           close(conn);, cfg->verb);
 
         if (fds[0].revents & POLLIN) {
             char buf0 [8*1024 + 1];
 
             rslt = read(acpt, buf0, sizeof(buf0) - 1);
-            _fail_if(rslt <= 0, close(conn); );
+            _fail_if(rslt <= 0, close(conn);, cfg->verb);
 
             buf0[rslt] = 0;
-            printf(buf0[rslt - 1] == '\n' ? "%s" : "%s\n", buf0);
+            if (cfg->verb) printf(buf0[rslt - 1] == '\n' ? "%s" : "%s\n", buf0);
 
             rslt = write(conn, buf0, rslt);
-            _fail_if(rslt <= 0, close(acpt); );
+            _fail_if(rslt <= 0, close(acpt);, cfg->verb);
         }
 
         if (fds[1].revents & POLLIN) {
             char buf1 [8*1024 + 1];
 
             rslt = read(conn, buf1, sizeof(buf1) - 1);
-            _fail_if(rslt <= 0, close(acpt); );
+            _fail_if(rslt <= 0, close(acpt);, cfg->verb);
 
             buf1[rslt] = 0;
-            printf(buf1[rslt - 1] == '\n' ? "%s" : "%s\n", buf1);
+            if (cfg->verb) printf(buf1[rslt - 1] == '\n' ? "%s" : "%s\n", buf1);
 
             rslt = write(acpt, buf1, rslt);
-            _fail_if(rslt <= 0, close(conn); );
+            _fail_if(rslt <= 0, close(conn);, cfg->verb);
         }
 
-        _fail_if(fds[0].revents & POLLHUP, close(conn); );
-        _fail_if(fds[1].revents & POLLHUP, close(acpt); );
+        _fail_if(fds[0].revents & POLLHUP, close(conn);, cfg->verb);
+        _fail_if(fds[1].revents & POLLHUP, close(acpt);, cfg->verb);
     }
 }
 
 
 static void _handler(int acpt, cfg_t *cfg) {
-    _proxy(acpt, _connect(acpt, cfg));
+    _proxy(acpt, _connect(acpt, cfg), cfg);
 }
 
 
 static void spawn(fun_t fun, int srve, int acpt, cfg_t *cfg) {
     pid_t pid = fork();
     
-    _fail_if(pid < 0,);
+    _fail_if(pid < 0,, cfg->verb);
 
     if (pid == 0) { close(srve); fun(acpt, cfg); exit(0); }
 }
@@ -133,25 +134,25 @@ static void serve(cfg_t *cfg) {
     int rslt;
 
     int srve = socket(AF_INET, SOCK_STREAM, 0);
-    _fail_if(srve < 0,);
+    _fail_if(srve < 0,, cfg->verb);
 
     int optn = 1;
     rslt = setsockopt(srve, SOL_SOCKET, SO_REUSEADDR, &optn, sizeof(optn));
-    _fail_if(rslt < 0, close(srve); );
+    _fail_if(rslt < 0, close(srve);, cfg->verb);
 
     struct sockaddr_in addr = { .sin_family = AF_INET,
                                 .sin_port   = htons(cfg->port),
                                 .sin_addr   = inet_addr(cfg->ipv4), };
 
     rslt = bind(srve, (struct sockaddr *)&addr, sizeof(addr));
-    _fail_if(rslt < 0, close(srve); );
+    _fail_if(rslt < 0, close(srve);, cfg->verb);
 
     rslt = listen(srve, 8);
-    _fail_if(rslt < 0, close(srve); );
+    _fail_if(rslt < 0, close(srve);, cfg->verb);
 
     for (;;) {
         int acpt = accept(srve, NULL, NULL);
-        _fail_if(acpt < 0, close(srve); );
+        _fail_if(acpt < 0, close(srve);, cfg->verb);
 
         spawn(_handler, srve, acpt, cfg);
         close(acpt);
@@ -160,10 +161,10 @@ static void serve(cfg_t *cfg) {
 
 
 static void _usage(char *argv[]) {
-    printf("Usage: %s [-h] [-B bind_ipv4]"
-                         " [-b bind_port]"
-                         " [-D dest_ipv4]"
-                         " [-d dest_port]\n", argv[0]);
+    printf("Usage: %s [-h] [-s] [-B bind_ipv4]"
+                              " [-b bind_port]"
+                              " [-D dest_ipv4]"
+                              " [-d dest_port]\n", argv[0]);
 }
 
 
@@ -171,22 +172,24 @@ int main(int argc, char *argv[]) {
     cfg_t cfg = { .port  = 6969,
                   .ipv4  = "0.0.0.0",
                   .dport = 8080,
-                  .dipv4 = "127.0.0.1", };
+                  .dipv4 = "127.0.0.1",
+                  .verb  = 1 };
     int opt;
     
-    while ((opt = getopt(argc, argv, "B:b:D:d:h")) != -1) {
+    while ((opt = getopt(argc, argv, "B:b:D:d:sh")) != -1) {
         switch (opt) {
             case 'B': cfg.ipv4  = optarg;       break;
             case 'b': cfg.port  = atoi(optarg); break;
             case 'D': cfg.dipv4 = optarg;       break;
             case 'd': cfg.dport = atoi(optarg); break;
+            case 's': cfg.verb  = 0;            break;
             case 'h':
             default : _usage(argv); exit(0);
         }
     }
 
-    printf("listening on %s:%d\n", cfg.ipv4, cfg.port);
-    printf("connecting to %s:%d\n", cfg.dipv4, cfg.dport);
+    if (cfg.verb) printf("listening on %s:%d\n", cfg.ipv4, cfg.port);
+    if (cfg.verb) printf("connecting to %s:%d\n", cfg.dipv4, cfg.dport);
 
     serve(&cfg);
 }
