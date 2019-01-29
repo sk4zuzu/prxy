@@ -1,5 +1,5 @@
 //
-// PRXY 0.2 20160415 (friday) copyright sk4zuzu@gmail.com 2016
+// PRXY 0.3 20190130 (wednesday) copyright sk4zuzu@gmail.com 2019
 //
 // This file is part of PRXY.
 //
@@ -17,6 +17,7 @@
 // along with PRXY.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+#include <inttypes.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,6 +44,7 @@ typedef struct {
     int   dport;
     char *dipv4;
     int   verb;
+    int   count;
 } cfg_t;
 
 typedef void (*fun_t) (int acpt, cfg_t *cfg);
@@ -150,9 +152,16 @@ static void serve(cfg_t *cfg) {
     rslt = listen(srve, 8);
     _fail_if(rslt < 0, close(srve);, cfg->verb);
 
+    uintmax_t counter = 0;
+
     for (;;) {
         int acpt = accept(srve, NULL, NULL);
         _fail_if(acpt < 0, close(srve);, cfg->verb);
+
+        if (cfg->count) {
+            counter++;
+            printf("cc: %"PRIuMAX"\n", counter);
+        }
 
         spawn(_handler, srve, acpt, cfg);
         close(acpt);
@@ -161,10 +170,10 @@ static void serve(cfg_t *cfg) {
 
 
 static void _usage(char *argv[]) {
-    printf("Usage: %s [-h] [-s] [-B bind_ipv4]"
-                              " [-b bind_port]"
-                              " [-D dest_ipv4]"
-                              " [-d dest_port]\n", argv[0]);
+    printf("Usage: %s [-h] [-s] [-c] [-B bind_ipv4]"
+                                   " [-b bind_port]"
+                                   " [-D dest_ipv4]"
+                                   " [-d dest_port]\n", argv[0]);
 }
 
 
@@ -173,15 +182,17 @@ int main(int argc, char *argv[]) {
                   .ipv4  = "0.0.0.0",
                   .dport = 8080,
                   .dipv4 = "127.0.0.1",
-                  .verb  = 1 };
+                  .verb  = 1,
+                  .count = 0 };
     int opt;
     
-    while ((opt = getopt(argc, argv, "B:b:D:d:sh")) != -1) {
+    while ((opt = getopt(argc, argv, "B:b:D:d:csh")) != -1) {
         switch (opt) {
             case 'B': cfg.ipv4  = optarg;       break;
             case 'b': cfg.port  = atoi(optarg); break;
             case 'D': cfg.dipv4 = optarg;       break;
             case 'd': cfg.dport = atoi(optarg); break;
+            case 'c': cfg.count = 1;            break;
             case 's': cfg.verb  = 0;            break;
             case 'h':
             default : _usage(argv); exit(0);
