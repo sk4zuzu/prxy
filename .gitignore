@@ -31,3 +31,6 @@ prxy
 
 # Debug files
 *.dSYM/
+
+# Directories
+c-ares/
