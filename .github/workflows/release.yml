@@ -1,0 +1,46 @@
+---
+name: Release
+
+on:
+  push:
+    tags: ["*.*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: "${{ github.actor }}"
+          password: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Build image
+        run: docker build . --tag "ghcr.io/${GITHUB_REPOSITORY,,}:$GITHUB_REF_NAME"
+
+      - name: Extract binary
+        run: >-
+          docker run --rm "ghcr.io/${GITHUB_REPOSITORY,,}:$GITHUB_REF_NAME" base64 /usr/local/bin/prxy
+          | base64 -d
+          | install -m u=rwx,go=rx /dev/fd/0 ./prxy
+
+      - name: Push image
+        run: docker push "ghcr.io/${GITHUB_REPOSITORY,,}:$GITHUB_REF_NAME"
+
+      - name: Tag image (latest)
+        run: docker tag "ghcr.io/${GITHUB_REPOSITORY,,}:$GITHUB_REF_NAME" "ghcr.io/${GITHUB_REPOSITORY,,}:latest"
+
+      - name: Push image (latest)
+        run: docker push "ghcr.io/${GITHUB_REPOSITORY,,}:latest"
+
+      - name: Create release
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: gh release create "$GITHUB_REF_NAME" ./prxy

@@ -1,5 +1,5 @@
 //
-// PRXY 0.4 20190621 (friday) copyright sk4zuzu@gmail.com 2019
+// PRXY 0.5 20250424 (thursday) copyright sk4zuzu@gmail.com 2025
 //
 // This file is part of PRXY.
 //
@@ -71,7 +71,7 @@ static void resolve(cfg_t *cfg) {
 
     ares_channel channel;
 
-    rslt = ares_init(&channel);
+    rslt = ares_init_options(&channel, NULL, 0);
     _fail_if(rslt != ARES_SUCCESS,);
 
     ares_gethostbyname(channel, cfg->dhost, AF_UNSPEC, _resolve, (void*) cfg);

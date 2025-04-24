@@ -1,27 +1,26 @@
+FROM alpine AS builder
 
-FROM alpine as builder
-
-RUN apk --no-cache add curl git \
- && apk --no-cache add binutils gcc make cmake musl-dev
+RUN apk --no-cache add binutils cmake curl gcc git make musl-dev
 
 COPY Makefile prxy.c /src/
 
-RUN cd /src/ \
- && make \
- && strip --strip-unneeded prxy
+WORKDIR /src/
 
-ARG TINI_VERSION=0.18.0
+RUN make && strip --strip-unneeded prxy
+
+ARG TINI_VERSION=0.19.0
 
 RUN curl -fsSL https://github.com/krallin/tini/releases/download/v${TINI_VERSION}/tini-static-amd64 \
-         -o /tini \
- && chmod +x /tini \
+  | install -m u=rwx,go=rx /dev/fd/0 /tini \
  && strip --strip-unneeded /tini
 
 FROM alpine
 
+RUN apk --no-cache add bash bat curl fd nmap-ncat ripgrep tcpdump vim
+
 COPY --from=builder /src/prxy /usr/local/bin/
 COPY --from=builder /tini     /tini
 
-ENTRYPOINT ["/tini", "--"]
+USER 1000
 
-# vim:ts=2:sw=2:et:syn=dockerfile:
+ENTRYPOINT ["/tini", "--"]
